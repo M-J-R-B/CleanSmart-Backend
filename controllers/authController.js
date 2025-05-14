@@ -68,6 +68,21 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Generate a session ID
+    const sessionId = require('crypto').randomBytes(64).toString('hex');
+    
+    // Store session ID in user document
+    user.sessionId = sessionId;
+    user.lastActive = new Date();
+    await user.save();
+    
+    // Set sessionId cookie that will be sent with future requests
+    res.cookie('sessionId', sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
     res.status(200).json({
       success: true,
       user: {
@@ -88,6 +103,19 @@ exports.login = async (req, res) => {
 // Logout Controller
 exports.logout = async (req, res) => {
   try {
+    // Clear session ID from cookie
+    res.clearCookie('sessionId');
+    
+    // If we have the user's sessionId, clear it from the database too
+    const sessionId = req.cookies.sessionId;
+    if (sessionId) {
+      const user = await User.findOne({ sessionId });
+      if (user) {
+        user.sessionId = null;
+        await user.save();
+      }
+    }
+    
     res.status(200).json({
       success: true,
       message: 'Logged out successfully'
